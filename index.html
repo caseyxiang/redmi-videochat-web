@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>视频通话</title>
+  <script src="https://web.sdk.qcloud.com/trtc/webrtc/v5/dist/trtc.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: #000; color: #fff; font-family: system-ui, -apple-system, sans-serif; }
+    #remote { position: fixed; inset: 0; background: #111; }
+    #local { position: fixed; top: 16px; right: 16px; width: 96px; height: 144px; background: #222; border-radius: 8px; overflow: hidden; z-index: 2; }
+    #panel { position: fixed; inset: 0; z-index: 3; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: #000; padding: 24px; overflow-y: auto; }
+    #panel input { width: 100%; max-width: 360px; font-size: 17px; padding: 13px; border-radius: 8px; border: none; }
+    #panel button, #hangup { font-size: 22px; padding: 18px 40px; border: none; border-radius: 12px; color: #fff; background: #43A047; }
+    #hangup { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); background: #E53935; z-index: 2; display: none; }
+    #status { font-size: 15px; color: #aaa; min-height: 20px; text-align: center; max-width: 360px; }
+    label { align-self: flex-start; max-width: 360px; width: 100%; font-size: 14px; color: #aaa; }
+  </style>
+</head>
+<body>
+  <div id="remote"></div>
+  <div id="local"></div>
+  <button id="hangup">挂断</button>
+
+  <div id="panel">
+    <h2>视频通话</h2>
+    <label>SDKAppID</label>
+    <input id="sdkappid" placeholder="腾讯云 SDKAppID（数字）" inputmode="numeric" autocomplete="off" />
+    <label>UserSig（控制台为 userId=web 生成）</label>
+    <input id="usersig" placeholder="UserSig" autocomplete="off" />
+    <label>房间号</label>
+    <input id="room" value="kiosktest" autocomplete="off" />
+    <button id="join">加入通话</button>
+    <div id="status"></div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const q = new URLSearchParams(location.search);
+    if (q.get('sdkappid')) $('sdkappid').value = q.get('sdkappid');
+    if (q.get('usersig')) $('usersig').value = q.get('usersig');
+    if (q.get('room')) $('room').value = q.get('room');
+
+    const USER_ID = 'web';
+    let trtc = null;
+
+    function setStatus(t) { $('status').textContent = t; }
+
+    async function join() {
+      const sdkAppId = parseInt($('sdkappid').value.trim(), 10);
+      const userSig = $('usersig').value.trim();
+      const strRoomId = $('room').value.trim() || 'kiosktest';
+      if (!sdkAppId || !userSig) { setStatus('请填写 SDKAppID 和 UserSig'); return; }
+
+      try {
+        setStatus('连接中…');
+        trtc = TRTC.create();
+
+        trtc.on(TRTC.EVENT.REMOTE_VIDEO_AVAILABLE, ({ userId, streamType }) => {
+          trtc.startRemoteVideo({ userId, streamType, view: 'remote' });
+        });
+        trtc.on(TRTC.EVENT.REMOTE_USER_EXIT, () => { $('remote').innerHTML = ''; });
+
+        await trtc.enterRoom({ sdkAppId, userId: USER_ID, userSig, strRoomId });
+        await trtc.startLocalVideo({ view: 'local' });
+        await trtc.startLocalAudio();
+
+        $('panel').style.display = 'none';
+        $('hangup').style.display = 'block';
+        setStatus('');
+      } catch (e) {
+        setStatus('失败：' + (e && e.message ? e.message : e));
+      }
+    }
+
+    async function hangup() {
+      try {
+        if (trtc) {
+          await trtc.stopLocalVideo();
+          await trtc.stopLocalAudio();
+          await trtc.exitRoom();
+          trtc = null;
+        }
+      } catch (e) { /* ignore */ }
+      $('remote').innerHTML = '';
+      $('local').innerHTML = '';
+      $('hangup').style.display = 'none';
+      $('panel').style.display = 'flex';
+      setStatus('已挂断');
+    }
+
+    $('join').onclick = join;
+    $('hangup').onclick = hangup;
+  </script>
+</body>
+</html>
